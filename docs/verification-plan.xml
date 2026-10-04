@@ -1,0 +1,493 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<VerificationPlan VERSION="0.3.0">
+  <GlobalPolicy>
+    <log-format>[ModuleName][Метод][БЛОК] сообщение</log-format>
+    <deterministic-first>true</deterministic-first>
+    <runtime-status>deferred</runtime-status>
+    <runtime-status-reason>Тестовый контур и база с данными недоступны. Верификация ограничена статическими проверками; runtime-проверки (загрузка в базу, открытие форм, движения по регистрам, сравнение с легаси) помечаются deferred и закрываются при появлении контура</runtime-status-reason>
+    <module-level-focus>BSL LS diagnostics — синтаксис, статический анализ по одному модулю. cf-validate — проверка XML-структуры метаданных. Ревью кода по чек-листам docs/1c-review-checklist.md и docs/query-review.md</module-level-focus>
+    <wave-level-focus>RLM-кросс-ссылки между модулями: существование вызываемых общих модулей, методов, объектов метаданных. Проверка целостности запросов через docs/query-review.md</wave-level-focus>
+    <phase-level-focus deferred="true">Загрузка XML в базу, запуск 1С:Предприятие, открытие форм внешних отчётов, проверка выгрузки и движений по регистрам</phase-level-focus>
+    <autonomy-gate>Каждый модуль должен иметь: команду проверки (bsl-ls + cf-validate), сценарии успеха/неудачи, где применимо — наблюдаемые лог-маркеры, wave/phase follow-up</autonomy-gate>
+    <redaction>Не логировать пароли, ключи, ПДн в открытом виде</redaction>
+    <replan-trigger>Изменение модели типовой (обновление релиза ломает запросы), отсутствие объекта метаданного/общего модуля, на которое ссылается код</replan-trigger>
+  </GlobalPolicy>
+
+  <VerificationMatrix>
+    <row module="M-CORE" priority="critical" evidence-type="deterministic" check="RLM: существование объектов, на которые ссылается код" />
+    <row module="M-EXT" priority="high" evidence-type="deterministic" check="cf-validate + RLM: заимствованные объекты" />
+    <row module="M-REPORT" priority="medium" evidence-type="deterministic" check="cf-validate + RLM: БСП-регистрация" />
+    <row module="M-SKUD-ORION" priority="high" evidence-type="deterministic" check="cf-validate" />
+    <row module="M-SKUD-DIAG" priority="high" evidence-type="deterministic" check="cf-validate + bsl-ls + query-review" />
+    <row module="M-SKUD-ABS" priority="high" evidence-type="deterministic" check="cf-validate + bsl-ls + query-review" />
+    <row module="M-RES-REPORT" priority="high" evidence-type="deterministic" check="cf-validate + bsl-ls + query-review (34 ВТ)" />
+    <row module="M-DIST-MIGR" priority="critical" evidence-type="deterministic" check="bsl-ls + RLM + query-review по всем волнам" />
+    <row module="M-GTD-FIX" priority="high" evidence-type="deterministic" check="bsl-ls + RLM + review алгоритма BFS" />
+    <row module="M-KP-MINING" priority="high" evidence-type="deterministic" check="bsl-ls + review контент-контракта" />
+    <row module="M-REPAIR-REPORT" priority="medium" evidence-type="deterministic" check="cf-validate + bsl-ls + query-review" />
+    <row module="M-BONUS-PLAN" priority="low" evidence-type="deterministic" check="дизайн-ревью по openspec (реализация не начата)" />
+  </VerificationMatrix>
+
+  <CriticalFlows>
+    <VF-SKUD-DIAG NAME="Диагностика посещаемости СКУД" USE_CASES="UC-SKUD-01" DATA_FLOW="DF-SKUD-DIAG" PRIORITY="high">
+      <scenario>Администратор запускает но_ДиагностикаСКУД за период</scenario>
+      <expected-outcome>Строки проходов сопоставлены с кадрами, ВидПроблемы классифицирован (5 категорий), варианты Основной/Проблемы</expected-outcome>
+      <static-checks>
+        <check-1>bsl-ls — 0 errors на ObjectModule.bsl</check-1>
+        <check-2>cf-validate на отчёт</check-2>
+        <check-3>query-review: 5 ВТ, порядок ВТЛоги → ВТАктуальныйХозорган → ВТИсточники → ВТДляСКД → final SELECT</check-3>
+        <check-4>RLM: ноОрионЛоги, ноОрионХозорган, ФизическиеЛица.ноХешСНИЛС существуют</check-4>
+      </static-checks>
+      <runtime-checks deferred="true">
+        <check-1>Запуск отчёта с данными проходов — 22 поля, 5 категорий</check-1>
+      </runtime-checks>
+    </VF-SKUD-DIAG>
+
+    <VF-SKUD-ABS NAME="Анализ действующих пропусков СКУД" USE_CASES="UC-SKUD-02" DATA_FLOW="DF-SKUD-ABS" PRIORITY="high">
+      <scenario>Администратор запускает но_АнализПропусковСКУД</scenario>
+      <expected-outcome>Реестр действующих пропусков (Истекший=2050-01-01), привязка к активным сотрудникам, 7 категорий ВидПроблемы</expected-outcome>
+      <static-checks>
+        <check-1>bsl-ls — 0 errors</check-1>
+        <check-2>cf-validate на отчёт</check-2>
+        <check-3>query-review: LEFT JOIN от хозоргана, срез кадровой истории (Интервальный)</check-3>
+        <check-4>БСП-регистрация ID но_АнализПропусковСКУД, safe mode off</check-4>
+      </static-checks>
+      <runtime-checks deferred="true">
+        <check-1>Сборка EPF и проверка в 1С (5.3 кейса)</check-1>
+      </runtime-checks>
+    </VF-SKUD-ABS>
+
+    <VF-RES-REPORT NAME="Единый отчёт по резервам" USE_CASES="UC-RES-01" DATA_FLOW="DF-RES-REPORT" PRIORITY="high">
+      <scenario>Коммерческий директор запускает ЕдиныйОтчетПоРезервам</scenario>
+      <expected-outcome>Излишки, резервы/доступность, себестоимость, неликвиды, сроки хранения, статусы заказов — один вариант без параметров</expected-outcome>
+      <static-checks>
+        <check-1>bsl-ls — 0 errors на ObjectModule.bsl</check-1>
+        <check-2>cf-validate на отчёт</check-2>
+        <check-3>query-review: пакетный запрос ~34 ВТ, все поля используются, новая модель доступности (СостояниеЗапаса/ХарактеристикаПотребности/Количество)</check-3>
+        <check-4>RLM: РаспределениеЗапасов, ЗапасыИПотребности, ТоварыКОтгрузке существуют</check-4>
+        <check-5>Фильтр Отгружается + ВРезерве + Доступно &gt; 0 в финальном SELECT</check-5>
+      </static-checks>
+      <runtime-checks deferred="true">
+        <check-1>Сверка выгрузки на данных, отсутствие ложного нуля</check-1>
+      </runtime-checks>
+    </VF-RES-REPORT>
+
+    <VF-DIST-MIGR NAME="Миграция кастомов на новую модель доступности" USE_CASES="UC-DIST-01" DATA_FLOW="DF-DIST-MIGR" PRIORITY="critical">
+      <scenario>После обновления релиза кастомные запросы читают старую модель</scenario>
+      <expected-outcome>Все затронутые объекты читают СостояниеЗапаса/ХарактеристикаПотребности/Количество без ложного нуля</expected-outcome>
+      <static-checks>
+        <check-1>По реестру затронутых объектов: bsl-ls — 0 errors</check-1>
+        <check-2>grep/RLM: в мигрированных запросах нет обращений к Перечисление.РаспределениеЗапасовСостояния.*</check-2>
+        <check-3>query-review: СУММА(ВЫБОР … Количество) по predicates вместо переименования полей</check-3>
+        <check-4>Реестр затронутых объектов актуален</check-4>
+      </static-checks>
+      <runtime-checks deferred="true">
+        <check-1>Проверка 5.3 на эталонных документах (пользователь, другая база)</check-1>
+      </runtime-checks>
+    </VF-DIST-MIGR>
+
+    <VF-GTD-FIX NAME="Исправление цепочек ГТД" USE_CASES="UC-GTD-01" DATA_FLOW="DF-GTD-FIX" PRIORITY="high">
+      <scenario>Найдены отрицательные остатки по ГТД, требуется построение цепочек и исправление</scenario>
+      <expected-outcome>Цепочка не обрывается на смене аналитики; подбор замен; перепроведение или безопасный режим «Тестирование»</expected-outcome>
+      <static-checks>
+        <check-1>bsl-ls — 0 errors на ObjectModule.bsl и модуле формы</check-1>
+        <check-2>cf-validate на обработку</check-2>
+        <check-3>RLM: ТоварыОрганизаций, документы 4 типов существуют; экспортные функции ВыполнитьАнализ/ИсправитьОтмеченные/ПодобратьРаспределениеПоГТД/НовыйКонтурДвижения вызываются</check-3>
+        <check-4>review алгоритма: BFS по ключам регистра, граница >=, стартовый контур исключён, per-key пул ДоступноПоКлючу</check-4>
+        <check-5>Режим «Тестирование»: транзакция с откатом, без записи</check-5>
+      </static-checks>
+      <runtime-checks deferred="true">
+        <check-1>Проверки на данных 4.x, 7.x, 8.x (отрицательные остатки по ГТД)</check-1>
+      </runtime-checks>
+    </VF-GTD-FIX>
+
+    <VF-KP-WORD NAME="Рендер КП майнинг в Word" USE_CASES="UC-KP-01, UC-KP-02" DATA_FLOW="DF-KP-WORD, DF-KP-MXL" PRIORITY="high">
+      <scenario>Менеджер формирует коммерческое предложение по интересу CRM</scenario>
+      <expected-outcome>Канонический Word-документ из шаблона по контент-контракту; MXL-предпросмотр из того же контракта</expected-outcome>
+      <static-checks>
+        <check-1>bsl-ls — 0 errors на обработке</check-1>
+        <check-2>cf-validate на обработку</check-2>
+        <check-3>review контент-контракта: разделение системные/фиксированные/бизнес-блоки, повторяющиеся секции</check-3>
+        <check-4>RLM: CRM_Интерес.ноПервичныйИнтерес, ноПолучатель существуют; шаблон .docx и медиа-ассеты на месте</check-4>
+      </static-checks>
+      <runtime-checks deferred="true">
+        <check-1>Валидация сформированного .docx, вставка медиа/гиперссылок (3.4, 4.x, 5.x)</check-1>
+      </runtime-checks>
+    </VF-KP-WORD>
+
+    <VF-REPAIR-REPORT NAME="Отчёт по материалам в обход перемещения" USE_CASES="UC-REPAIR-01" DATA_FLOW="DF-REPAIR-REPORT" PRIORITY="medium">
+      <scenario>Мастер/логист запускает отчёт по материалам заказ-нарядов</scenario>
+      <expected-outcome>Выявлены РО со складов без «СкладРемонта», списанные в обход перемещения</expected-outcome>
+      <static-checks>
+        <check-1>bsl-ls — 0 errors</check-1>
+        <check-2>cf-validate на отчёт</check-2>
+        <check-3>query-review: цепочка ЗН → ЗаказКлиента → РасхОрдер, критерий «СкладРемонта»=Истина через ПВХ ДополнительныеРеквизитыИСведения</check-3>
+      </static-checks>
+      <runtime-checks deferred="true">
+        <check-1>Выгрузка с данными заказ-нарядов и складов</check-1>
+      </runtime-checks>
+    </VF-REPAIR-REPORT>
+  </CriticalFlows>
+
+  <ModuleVerification>
+    <V-M-CORE MODULE="M-CORE" PRIORITY="critical">
+      <test-files>
+        <file>main/</file>
+      </test-files>
+      <module-checks>
+        <check-1>RLM: существование объектов метаданных, на которые ссылается код внешних отчётов/обработок</check-1>
+      </module-checks>
+      <evidence-type>deterministic</evidence-type>
+    </V-M-CORE>
+
+    <V-M-EXT MODULE="M-EXT" PRIORITY="high">
+      <test-files>
+        <file>main/Extentions/</file>
+      </test-files>
+      <module-checks>
+        <check-1>cf-validate на расширения</check-1>
+        <check-2>RLM: заимствованные объекты и перехватчики</check-2>
+      </module-checks>
+      <evidence-type>deterministic</evidence-type>
+    </V-M-EXT>
+
+    <V-M-REPORT MODULE="M-REPORT" PRIORITY="medium">
+      <test-files>
+        <file>main/Внешние отчеты и обработки/</file>
+      </test-files>
+      <module-checks>
+        <check-1>cf-validate на внешние отчёты/обработки</check-1>
+        <check-2>БСП-регистрация (СведенияОВнешнейОбработке) заполнена</check-2>
+      </module-checks>
+      <evidence-type>deterministic</evidence-type>
+    </V-M-REPORT>
+
+    <V-M-SKUD-ORION MODULE="M-SKUD-ORION" PRIORITY="high">
+      <test-files>
+        <file>main/InformationRegisters/ноОрионХозорган/</file>
+        <file>main/InformationRegisters/ноОрионЛоги/</file>
+      </test-files>
+      <module-checks>
+        <check-1>cf-validate на регистры и справочник ноОрионДВ</check-1>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">ноОрионХозорган: реквизит Истекший, действующая запись = 2050-01-01</scenario-1>
+      </scenarios>
+      <evidence-type>deterministic</evidence-type>
+    </V-M-SKUD-ORION>
+
+    <V-M-SKUD-DIAG MODULE="M-SKUD-DIAG" PRIORITY="high">
+      <test-files>
+        <file>main/Внешние отчеты и обработки/но_ДиагностикаСКУД_2025.06.05/</file>
+      </test-files>
+      <module-checks>
+        <check-1>bsl-ls — 0 errors</check-1>
+        <check-2>cf-validate</check-2>
+        <check-3>query-review: 5 ВТ, порядок и связи</check-3>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">Пакетный запрос из 5 ВТ, 22 поля, 5 категорий ВидПроблемы</scenario-1>
+        <scenario-2 kind="failure">Проблемная строка: ВидПроблемы заполнен (не пусто)</scenario-2>
+      </scenarios>
+      <evidence-type>deterministic</evidence-type>
+      <phase-follow-up deferred="true">Запуск отчёта с данными проходов</phase-follow-up>
+    </V-M-SKUD-DIAG>
+
+    <V-M-SKUD-ABS MODULE="M-SKUD-ABS" PRIORITY="high">
+      <test-files>
+        <file>main/Внешние отчеты и обработки/но_АнализПропусковСКУД_2025.06.05/</file>
+      </test-files>
+      <module-checks>
+        <check-1>bsl-ls — 0 errors</check-1>
+        <check-2>cf-validate</check-2>
+        <check-3>query-review: LEFT JOIN от хозоргана, срез кадровой истории</check-3>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">24 поля, 7 категорий ВидПроблемы, один плоский вариант</scenario-1>
+      </scenarios>
+      <evidence-type>deterministic</evidence-type>
+      <phase-follow-up deferred="true">Сборка EPF, проверка в 1С</phase-follow-up>
+    </V-M-SKUD-ABS>
+
+    <V-M-RES-REPORT MODULE="M-RES-REPORT" PRIORITY="high">
+      <test-files>
+        <file>main/Внешние отчеты и обработки/ЕдиныйОтчетПоРезервам_10_09_25/</file>
+      </test-files>
+      <module-checks>
+        <check-1>bsl-ls — 0 errors</check-1>
+        <check-2>cf-validate</check-2>
+        <check-3>query-review: ~34 ВТ, новая модель доступности, финальный фильтр</check-3>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">44+ поля, один вариант без параметров</scenario-1>
+      </scenarios>
+      <evidence-type>deterministic</evidence-type>
+      <phase-follow-up deferred="true">Сверка выгрузки на данных</phase-follow-up>
+    </V-M-RES-REPORT>
+
+    <V-M-DIST-MIGR MODULE="M-DIST-MIGR" PRIORITY="critical">
+      <test-files>
+        <file>main/CommonModules/ноЗаказКлиентаСервер/Ext.bsl</file>
+      </test-files>
+      <module-checks>
+        <check-1>По реестру затронутых объектов: bsl-ls — 0 errors</check-1>
+        <check-2>RLM: нет обращений к Перечисление.РаспределениеЗапасовСостояния.* в мигрированном коде</check-2>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">Агрегаты через СУММА(ВЫБОР … Количество) по predicates</scenario-1>
+        <scenario-2 kind="failure">Ложный ноль при ненулевом Количество — отсутствует</scenario-2>
+      </scenarios>
+      <evidence-type>deterministic</evidence-type>
+      <phase-follow-up deferred="true">Проверка 5.3 на эталонных документах</phase-follow-up>
+    </V-M-DIST-MIGR>
+
+    <V-M-GTD-FIX MODULE="M-GTD-FIX" PRIORITY="high">
+      <test-files>
+        <file>main/Внешние отчеты и обработки/ноИсправлениеГТДвТоварыОрганизаций/</file>
+      </test-files>
+      <module-checks>
+        <check-1>bsl-ls — 0 errors</check-1>
+        <check-2>cf-validate</check-2>
+        <check-3>RLM: экспортные функции и вызовы</check-3>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">BFS-обход: цепочка не обрывается на смене аналитики</scenario-1>
+        <scenario-2 kind="failure">Терминальный расход без замены — попадает в пул ДоступноПоКлючу</scenario-2>
+      </scenarios>
+      <required-log-markers>
+        <marker-1>[ноИсправлениеГТДвТоварыОрганизаций][Анализ][БЛОК_ОБХОД_ЦЕПОЧКИ]</marker-1>
+      </required-log-markers>
+      <evidence-type>deterministic</evidence-type>
+      <phase-follow-up deferred="true">Проверки на данных 4.x, 7.x, 8.x</phase-follow-up>
+    </V-M-GTD-FIX>
+
+    <V-M-KP-MINING MODULE="M-KP-MINING" PRIORITY="high">
+      <test-files>
+        <file>main/Внешние отчеты и обработки/КоммерческоеПредложениеМайнинг/</file>
+      </test-files>
+      <module-checks>
+        <check-1>bsl-ls — 0 errors</check-1>
+        <check-2>cf-validate</check-2>
+        <check-3>review контент-контракта и двух рендереров</check-3>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">Word-рендер из шаблона по контент-контракту</scenario-1>
+        <scenario-2 kind="success">MXL-предпросмотр из того же контракта</scenario-2>
+      </scenarios>
+      <evidence-type>deterministic</evidence-type>
+      <phase-follow-up deferred="true">Валидация .docx, медиа/гиперссылки, rollout (3.4, 4.x, 5.x)</phase-follow-up>
+    </V-M-KP-MINING>
+
+    <V-M-REPAIR-REPORT MODULE="M-REPAIR-REPORT" PRIORITY="medium">
+      <test-files>
+        <file>main/Внешние отчеты и обработки/но_ОтчетПоМатериаламВОбходПеремещения/</file>
+      </test-files>
+      <module-checks>
+        <check-1>bsl-ls — 0 errors</check-1>
+        <check-2>cf-validate</check-2>
+        <check-3>query-review: критерий обхода через «СкладРемонта»</check-3>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">Группировки Подразделение → РасходныйОрдер, отборы по периоду/подразделению</scenario-1>
+      </scenarios>
+      <evidence-type>deterministic</evidence-type>
+    </V-M-REPAIR-REPORT>
+
+    <V-M-BONUS-PLAN MODULE="M-BONUS-PLAN" PRIORITY="low">
+      <test-files>
+        <file>openspec/changes/design-unified-bonus-calculation/</file>
+      </test-files>
+      <module-checks>
+        <check-1>Дизайн-ревью: proposal/design/specs/ТЗ согласованы</check-1>
+      </module-checks>
+      <scenarios>
+        <scenario-1 kind="success">Реализация не начата — модуль в статусе planned</scenario-1>
+      </scenarios>
+      <evidence-type>deterministic</evidence-type>
+    </V-M-BONUS-PLAN>
+  </ModuleVerification>
+
+  <PhaseGates>
+    <Gate-Phase-1 PHASE="Phase-1">
+      <goal>Отчёты СКУД: статическая корректность</goal>
+      <commands>
+        <command-1>bsl-ls — 0 errors на оба отчёта</command-1>
+        <command-2>cf-validate на оба отчёта</command-2>
+        <command-3>query-review пакетных запросов</command-3>
+      </commands>
+      <required-evidence>
+        <evidence-1>bsl-ls — 0 errors</evidence-1>
+        <evidence-2>cf-validate — 0 errors</evidence-2>
+      </required-evidence>
+      <runtime-evidence deferred="true">
+        <evidence-1>Сборка EPF и запуск отчётов в 1С</evidence-1>
+      </runtime-evidence>
+    </Gate-Phase-1>
+
+    <Gate-Phase-2 PHASE="Phase-2">
+      <goal>Единый отчёт по резервам: статическая корректность</goal>
+      <commands>
+        <command-1>bsl-ls — 0 errors</command-1>
+        <command-2>cf-validate</command-2>
+        <command-3>query-review пакетного запроса ~34 ВТ</command-3>
+      </commands>
+      <required-evidence>
+        <evidence-1>bsl-ls — 0 errors</evidence-1>
+        <evidence-2>cf-validate — 0 errors</evidence-2>
+      </required-evidence>
+      <runtime-evidence deferred="true">
+        <evidence-1>Сверка выгрузки на данных</evidence-1>
+      </runtime-evidence>
+    </Gate-Phase-2>
+
+    <Gate-Phase-3 PHASE="Phase-3">
+      <goal>Миграция распределения завершена по волнам 1-4 и стабилизации</goal>
+      <commands>
+        <command-1>bsl-ls по реестру затронутых объектов — 0 errors</command-1>
+        <command-2>RLM/grep: нет старых обращений к модели</command-2>
+      </commands>
+      <required-evidence>
+        <evidence-1>Реестр затронутых объектов закрыт</evidence-1>
+      </required-evidence>
+      <runtime-evidence deferred="true">
+        <evidence-1>Проверка 5.3 на эталонных документах (пользователь)</evidence-1>
+      </runtime-evidence>
+    </Gate-Phase-3>
+
+    <Gate-Phase-4 PHASE="Phase-4">
+      <goal>Обработка ГТД: статическая корректность алгоритма</goal>
+      <commands>
+        <command-1>bsl-ls — 0 errors</command-1>
+        <command-2>cf-validate</command-2>
+        <command-3>review BFS-алгоритма</command-3>
+      </commands>
+      <required-evidence>
+        <evidence-1>bsl-ls — 0 errors</evidence-1>
+      </required-evidence>
+      <runtime-evidence deferred="true">
+        <evidence-1>Проверки на данных 4.x, 7.x, 8.x</evidence-1>
+      </runtime-evidence>
+    </Gate-Phase-4>
+
+    <Gate-Phase-5 PHASE="Phase-5">
+      <goal>КП майнинг: контент-контракт и рендереры</goal>
+      <commands>
+        <command-1>bsl-ls — 0 errors</command-1>
+        <command-2>cf-validate</command-2>
+        <command-3>review контент-контракта</command-3>
+      </commands>
+      <required-evidence>
+        <evidence-1>Контент-контракт описан, оба рендерера реализованы</evidence-1>
+      </required-evidence>
+      <runtime-evidence deferred="true">
+        <evidence-1>Валидация .docx и MXL-предпросмотра</evidence-1>
+      </runtime-evidence>
+    </Gate-Phase-5>
+
+    <Gate-Phase-6 PHASE="Phase-6">
+      <goal>Отчёт по материалам ремонта: статическая корректность</goal>
+      <commands>
+        <command-1>bsl-ls — 0 errors</command-1>
+        <command-2>cf-validate</command-2>
+      </commands>
+      <required-evidence>
+        <evidence-1>bsl-ls — 0 errors</evidence-1>
+      </required-evidence>
+    </Gate-Phase-6>
+
+    <Gate-Phase-7 PHASE="Phase-7">
+      <goal>Премии: дизайн готов, реализация по openspec</goal>
+      <commands>
+        <command-1>Дизайн-ревью openspec/changes/design-unified-bonus-calculation</command-1>
+      </commands>
+      <required-evidence>
+        <evidence-1>Реализация не начата (planned)</evidence-1>
+      </required-evidence>
+    </Gate-Phase-7>
+  </PhaseGates>
+
+  <FailurePackets>
+    <FP-RES-FALSEZERO MODULE="M-RES-REPORT" REF="V-M-RES-REPORT / scenario-1">
+      <contract-ref>M-RES-REPORT / Единый отчёт по резервам</contract-ref>
+      <expected-evidence>
+        <assertion>Отчёт показывает резервы/доступность корректно</assertion>
+      </expected-evidence>
+      <observed-evidence>
+        <trace>Поле доступности = 0 при ненулевом Количество в РаспределениеЗапасов</trace>
+      </observed-evidence>
+      <first-divergent-block>Пакетный запрос СКД — ВТ_ИтоговыеДанные</first-divergent-block>
+      <root-cause>Запрос читает старую модель доступности (Состояние/ВНаличии/Свободно) после обновления релиза</root-cause>
+      <suggested-next-action>Мигрировать запрос на СостояниеЗапаса/ХарактеристикаПотребности/Количество по правилам docs/query-review.md</suggested-next-action>
+    </FP-RES-FALSEZERO>
+
+    <FP-GTD-CHAIN-BREAK MODULE="M-GTD-FIX" REF="V-M-GTD-FIX / scenario-1">
+      <contract-ref>M-GTD-FIX / BFS-обход цепочек</contract-ref>
+      <expected-evidence>
+        <assertion>Цепочка включает Перемещение, КорректировкуНазначения, Реализацию</assertion>
+      </expected-evidence>
+      <observed-evidence>
+        <trace>Цепочка обрывается после первого Перемещения (приход на другой аналитике погашает дефицит)</trace>
+      </observed-evidence>
+      <first-divergent-block>БЛОК_ОБХОД_ЦЕПОЧКИ</first-divergent-block>
+      <root-cause>Остаток дефицита отслеживается сквозь смену аналитик, а не по полным ключам регистра</root-cause>
+      <suggested-next-action>Использовать BFS по полным ключам (АналитикаУчета, Организация, ВидЗапасов, НомерГТД) с границей &gt;= и исключением стартового контура</suggested-next-action>
+    </FP-GTD-CHAIN-BREAK>
+
+    <FP-SKUD-MATCH MODULE="M-SKUD-ABS" REF="V-M-SKUD-ABS / scenario-1">
+      <contract-ref>M-SKUD-ABS / матчинг пропусков</contract-ref>
+      <expected-evidence>
+        <assertion>Строка пропуска привязана к активному сотруднику или ВидПроблемы заполнен</assertion>
+      </expected-evidence>
+      <observed-evidence>
+        <trace>Строка без сотрудника и без ВидПроблемы (не классифицирована)</trace>
+      </observed-evidence>
+      <first-divergent-block>LEFT JOIN к сотрудникам / классификация</first-divergent-block>
+      <root-cause>Не покрыт случай расхождения (нет СНИЛС, дубликат, уволен, нет кадров)</root-cause>
+      <suggested-next-action>Дополнить классификацию ВидПроблемы до 7 категорий и проверить покрытие всех расхождений матчинга</suggested-next-action>
+    </FP-SKUD-MATCH>
+  </FailurePackets>
+
+  <AutonomyReadiness>
+    <assessment area="Phase-1 СКУД">
+      <module-local-commands>Да — bsl-ls + cf-validate + query-review</module-local-commands>
+      <success-failure-scenarios>Да — для обоих отчётов</success-failure-scenarios>
+      <log-markers>Частично — СКД-отчёты без обязательных маркеров</log-markers>
+      <followup>Да — Gate-Phase-1 + runtime deferred</followup>
+      <verdict>SAFE_FOR_AUTONOMOUS_STATIC — статические проверки достаточны, runtime deferred</verdict>
+    </assessment>
+
+    <assessment area="M-RES-REPORT">
+      <module-local-commands>Да — bsl-ls + cf-validate + query-review</module-local-commands>
+      <success-failure-scenarios>Да — 1 success, 1 failure (ложный ноль)</success-failure-scenarios>
+      <log-markers>Нет — СКД-отчёт</log-markers>
+      <followup>Да — Gate-Phase-2 + runtime deferred</followup>
+      <failure-packet>Да — FP-RES-FALSEZERO</failure-packet>
+      <verdict>SAFE_FOR_AUTONOMOUS_STATIC — критичен фильтр от ложного нуля</verdict>
+    </assessment>
+
+    <assessment area="M-DIST-MIGR">
+      <module-local-commands>Да — bsl-ls + RLM + grep по реестру</module-local-commands>
+      <success-failure-scenarios>Да — отсутствие старых обращений</success-failure-scenarios>
+      <log-markers>Нет</log-markers>
+      <followup>Да — Gate-Phase-3, волны 1-4 закрыты</followup>
+      <verdict>SAFE_FOR_AUTONOMOUS_STATIC — реестр объектов обязателен</verdict>
+    </assessment>
+
+    <assessment area="M-GTD-FIX">
+      <module-local-commands>Да — bsl-ls + cf-validate + review</module-local-commands>
+      <success-failure-scenarios>Да — 2 сценария</success-failure-scenarios>
+      <log-markers>Да — БЛОК_ОБХОД_ЦЕПОЧКИ</log-markers>
+      <followup>Да — Gate-Phase-4 + runtime deferred</followup>
+      <failure-packet>Да — FP-GTD-CHAIN-BREAK</failure-packet>
+      <verdict>SAFE_FOR_AUTONOMOUS_STATIC_WITH_GATE — требует review алгоритма</verdict>
+    </assessment>
+
+    <assessment area="M-KP-MINING">
+      <module-local-commands>Да — bsl-ls + cf-validate + review</module-local-commands>
+      <success-failure-scenarios>Да — 2 сценария</success-failure-scenarios>
+      <log-markers>Нет</log-markers>
+      <followup>Да — Gate-Phase-5 + runtime deferred</followup>
+      <verdict>SAFE_FOR_AUTONOMOUS_STATIC — контент-контракт обязателен</verdict>
+    </assessment>
+  </AutonomyReadiness>
+</VerificationPlan>

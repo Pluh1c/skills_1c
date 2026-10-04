@@ -20,7 +20,7 @@
 | `tui.json` | Конфигурация TUI: подключает плагин голосового ввода `@hxnnxs/opencode-voice`. |
 | `restore.ps1` | Скрипт развёртывания в проект. Читает манифест и локальные пути, копирует скиллы, генерирует конфиг, при необходимости ставит зависимости. |
 | `MODELS.md` | Справка по моделям: как переключать модель (`/models`), задавать уровень рассуждений (`reasoningEffort`), настраивать раздельные модели для Plan/Build. |
-| `docs/` | `rules.md` — правила работы со скиллами; `external-borrowings.md` — матрица заимствований и лицензий; `upstream-sync.md` — предложение по обновлению скиллов из `cc-1c-skills`. |
+| `docs/` | Правила и руководства: `rules.md` (работа со скиллами), `1c-rules.md`/`1c-standards.md`/`query-rules.md`/`1c-skd.md`/`1c-events.md`/`1c-methods.md`/`1c-contexts-and-modules.md`/`1c-bsp-patterns.md`/`1c-review-checklist.md` (разработка 1С), инфраструктурные (`mcp.md`, `capability-map.md`, `agent-ops.md` и др.), а также `external-borrowings.md` и `upstream-sync.md`. Индекс — [`docs/README.md`](docs/README.md). |
 | `README.md` | Этот документ. |
 
 ## Справочные материалы скиллов
